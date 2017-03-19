@@ -16,93 +16,228 @@ import numpy as np
 
 train_data = train_data['data'].reshape(50000, 3, 32, 32).transpose(0,2,3,1).astype("float")/255
 
+def mits():
+	# print train_data[0]
+	# # cv2.imshow('',train_data[0])
+	# # cv2.waitKey()
+	# plt.imshow(train_data[0])
+	# plt.show()
 
-# print train_data[0]
-# # cv2.imshow('',train_data[0])
-# # cv2.waitKey()
-# plt.imshow(train_data[0])
-# plt.show()
+
+	import tensorflow as tf
+	def xavier_init(size):
+	    in_dim = size[0]
+	    xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
+	    return tf.random_normal(shape=size, stddev=xavier_stddev)
+
+
+	Wg1 = tf.Variable(xavier_init([100,768]))
+	bg1=tf.Variable(xavier_init([768]))
+	Wg2 = tf.Variable(xavier_init([768,784]))
+	bg2=tf.Variable(xavier_init([784]))
+	theta_D = [Wg1, Wg2, bg1, bg2]
+	def generator(input):
+		with tf.variable_scope("generator") as scope:
+			layer1 = tf.nn.relu(tf.matmul(input, Wg1) + bg1)
+			output = tf.reshape(tf.nn.sigmoid(tf.matmul(layer1, Wg2) + bg2), [-1, 28, 28, 1])
+		return output
+
+	W1 = tf.Variable(xavier_init([784, 768]))
+	b1=tf.Variable(xavier_init([768]))
+	W3 = tf.Variable(xavier_init([768,1]))
+	b3=tf.Variable(xavier_init([1]))
+	W5 = tf.Variable(xavier_init([192, 64]))
+	b5=tf.Variable(xavier_init([64]))
+	W7 = tf.Variable(xavier_init([64, 1]))
+	b7=tf.Variable(xavier_init([1]))
+
+	theta_G = [W1, W3, W5, W7, b1, b3, b5, b7]
+	def discriminator(input):
+		with tf.variable_scope("discriminator") as scope:
+			input = tf.reshape(input, [-1, 784])
+			layer1 = tf.nn.tanh(tf.matmul(input, W1)+ b1)
+
+			layer3 = tf.matmul(layer1, W3)+ b3
+
+			# layer5 = tf.nn.relu(tf.matmul(layer3, W5)+ b5)
+
+			# layer7 = tf.nn.relu(tf.matmul(layer5, W7)+ b7)
+
+			output = tf.nn.sigmoid(layer3)
+			logits = layer3
+		return output, logits
+
+	input_d = tf.placeholder(tf.float32)
+	label = tf.placeholder(tf.int8)
+	Z = tf.placeholder(tf.float32, shape=[None, 100], name='Z')
+	gen = generator(Z)
+	d_r, di_r = discriminator(input_d) 
+	d_f, di_f = discriminator(gen)
+
+	g_loss = -tf.reduce_mean(tf.log(d_f))
+	d_loss = -tf.reduce_mean(tf.log(d_r) + tf.log(1.0-d_f+1e-20))
+
+	D_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_r, labels=tf.ones_like(di_r)))
+	D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_f, labels=tf.zeros_like(di_f)))
+	D_loss = D_loss_real + D_loss_fake
+	G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_f, labels=tf.ones_like(di_f)))
+
+	d_solver = tf.train.AdamOptimizer(1e-3).minimize(D_loss, var_list=theta_D)
+	g_solver = tf.train.AdamOptimizer(1e-6).minimize(G_loss, var_list=theta_G)
+
+	sess = tf.InteractiveSession()
+	init = tf.global_variables_initializer()
+	sess.run(init)
+
+	batch_size = 10
+
+	from tensorflow.examples.tutorials.mnist import input_data
+	mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
+	train_data1 = train_data
+	def train(mode=0):
+		for k in range(1000):
+			for i in range(len(train_data1)/batch_size):
+				train_data, _ = mnist.train.next_batch(batch_size)
+				if mode == 0:
+					sess.run(d_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
+					sess.run(g_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100])})
+				elif mode == 1:
+					sess.run(g_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100])})
+				elif mode == 2:
+					sess.run(d_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
+				if i%1000 == 0:
+					show(k*10000+i)
+					print sess.run([d_r, d_f, di_r, di_f, G_loss, D_loss], feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
+					print str(k)+" : "+str(i)+"/"+str(len(train_data)/batch_size)
+
+	def show(i):
+		plt.imshow(np.reshape(sess.run(gen, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100])})[6], [28,28]))
+		plt.savefig('out/{}.png'.format(str(i).zfill(10)), bbox_inches='tight')
+		# plt.show(block=False)
 
 
 import tensorflow as tf
+from tensorflow.examples.tutorials.mnist import input_data
+import numpy as np
+import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import os
+
+
 def xavier_init(size):
     in_dim = size[0]
     xavier_stddev = 1. / tf.sqrt(in_dim / 2.)
     return tf.random_normal(shape=size, stddev=xavier_stddev)
 
 
-Wg1 = tf.Variable(xavier_init([100,768]))
-bg1=tf.Variable(xavier_init([768]))
-Wg2 = tf.Variable(xavier_init([768,3072]))
-bg2=tf.Variable(xavier_init([3072]))
-theta_D = [Wg1, Wg2, bg1, bg2]
-def generator(input):
-	with tf.variable_scope("generator") as scope:
-		layer1 = tf.nn.relu(tf.matmul(input, Wg1) + bg1)
-		output = tf.reshape(tf.nn.sigmoid(tf.matmul(layer1, Wg2) + bg2), [-1, 32, 32, 3])
-	return output
+X = tf.placeholder(tf.float32, shape=[None, 32, 32])
 
-W1 = tf.Variable(xavier_init([3072, 768]))
-b1=tf.Variable(xavier_init([768]))
-W3 = tf.Variable(xavier_init([768,1]))
-b3=tf.Variable(xavier_init([1]))
-W5 = tf.Variable(xavier_init([192, 64]))
-b5=tf.Variable(xavier_init([64]))
-W7 = tf.Variable(xavier_init([64, 1]))
-b7=tf.Variable(xavier_init([1]))
+D_W1 = tf.Variable(xavier_init([3072/3, 512]))
+D_b1 = tf.Variable(tf.zeros(shape=[512]))
 
-theta_G = [W1, W3, W5, W7, b1, b3, b5, b7]
-def discriminator(input):
-	with tf.variable_scope("discriminator") as scope:
-		input = tf.reshape(input, [-1, 3072])
-		layer1 = tf.nn.tanh(tf.matmul(input, W1)+ b1)
+D_W2 = tf.Variable(xavier_init([512, 1]))
+D_b2 = tf.Variable(tf.zeros(shape=[1]))
 
-		layer3 = tf.matmul(layer1, W3)+ b3
+theta_D = [D_W1, D_W2, D_b1, D_b2]
 
-		# layer5 = tf.nn.relu(tf.matmul(layer3, W5)+ b5)
 
-		# layer7 = tf.nn.relu(tf.matmul(layer5, W7)+ b7)
+Z = tf.placeholder(tf.float32, shape=[None, 100])
 
-		output = tf.nn.sigmoid(layer3)
-		logits = layer3
-	return output, logits
+G_W1 = tf.Variable(xavier_init([100, 512]))
+G_b1 = tf.Variable(tf.zeros(shape=[512]))
 
-input_d = tf.placeholder(tf.float32)
-label = tf.placeholder(tf.int8)
-Z = tf.placeholder(tf.float32, shape=[None, 100], name='Z')
-gen = generator(Z)
-d_r, di_r = discriminator(input_d) 
-d_f, di_f = discriminator(gen)
+G_W2 = tf.Variable(xavier_init([512, 3072/3]))
+G_b2 = tf.Variable(tf.zeros(shape=[3072/3]))
 
-g_loss = -tf.reduce_mean(tf.log(d_f))
-d_loss = -tf.reduce_mean(tf.log(d_r) + tf.log(1.0-d_f+1e-20))
+theta_G = [G_W1, G_W2, G_b1, G_b2]
 
-D_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_r, labels=tf.ones_like(di_r)))
-D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_f, labels=tf.zeros_like(di_f)))
+
+def sample_Z(m, n):
+    return np.random.uniform(-1., 1., size=[m, n])
+
+
+def generator(z):
+    G_h1 = tf.nn.relu(tf.matmul(z, G_W1) + G_b1)
+    G_log_prob = tf.matmul(G_h1, G_W2) + G_b2
+    G_prob = tf.nn.sigmoid(G_log_prob)
+
+    return G_prob
+
+
+def discriminator(x):
+	x = tf.reshape(x, [-1, 3072/3])
+	D_h1 = tf.nn.relu(tf.matmul(x, D_W1) + D_b1)
+	D_logit = tf.matmul(D_h1, D_W2) + D_b2
+	D_prob = tf.nn.sigmoid(D_logit)
+
+	return D_prob, D_logit
+
+
+def plot(samples):
+    fig = plt.figure(figsize=(4, 4))
+    gs = gridspec.GridSpec(4, 4)
+    gs.update(wspace=0.05, hspace=0.05)
+
+    for i, sample in enumerate(samples):
+        ax = plt.subplot(gs[i])
+        plt.axis('off')
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        ax.set_aspect('equal')
+        plt.imshow(sample.reshape(32, 32), cmap='Greys_r')
+
+    return fig
+
+
+G_sample = generator(Z)
+D_real, D_logit_real = discriminator(X)
+D_fake, D_logit_fake = discriminator(G_sample)
+
+# D_loss = -tf.reduce_mean(tf.log(D_real+1e-30) + tf.log(1. - D_fake + 1e-30))
+# G_loss = -tf.reduce_mean(tf.log(D_fake+1e-30))
+
+# Alternative losses:
+# -------------------
+D_loss_real = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_real, labels=tf.ones_like(D_logit_real)))
+D_loss_fake = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.zeros_like(D_logit_fake)))
 D_loss = D_loss_real + D_loss_fake
-G_loss = -tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=di_f, labels=tf.ones_like(di_f)))
+G_loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(logits=D_logit_fake, labels=tf.ones_like(D_logit_fake)))
 
-d_solver = tf.train.AdamOptimizer(1e-3).minimize(D_loss, var_list=theta_D)
-g_solver = tf.train.AdamOptimizer(1e-3).minimize(G_loss, var_list=theta_G)
+D_solver = tf.train.AdamOptimizer().minimize(D_loss, var_list=theta_D)
+G_solver = tf.train.AdamOptimizer().minimize(G_loss, var_list=theta_G)
 
-sess = tf.InteractiveSession()
-init = tf.global_variables_initializer()
-sess.run(init)
+mb_size = 100
+Z_dim = 100
 
-batch_size = 10
+mnist = input_data.read_data_sets('../../MNIST_data', one_hot=True)
 
+sess = tf.Session()
+sess.run(tf.global_variables_initializer())
 
-def train():
-	for k in range(1000):
-		for i in range(len(train_data)/batch_size):
-			sess.run(g_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100])})
-			sess.run(d_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
-			if i%1000 == 0:
-				show(k*10000+i)
-				print sess.run([d_r, d_f, di_r, di_f, g_loss, d_loss], feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
-				print str(k)+" : "+str(i)+"/"+str(len(train_data)/batch_size)
+if not os.path.exists('out/'):
+    os.makedirs('out/')
 
-def show(i):
-	plt.imshow(sess.run(gen, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100])})[6])
-	plt.savefig('out/{}.png'.format(str(i).zfill(10)), bbox_inches='tight')
-	# plt.show(block=False)
+i = 0
+
+for it in range(1000000):
+    if it % 100 == 0:
+        samples = sess.run(G_sample, feed_dict={Z: sample_Z(16, Z_dim)})
+
+        fig = plot(samples)
+        plt.savefig('out/{}.png'.format(str(i).zfill(6)), bbox_inches='tight')
+        i += 1
+        plt.close(fig)
+
+    # X_mb, _ = mnist.train.next_batch(mb_size)
+    b = it%(len(train_data)/mb_size)
+    X_mb = train_data[(b)*mb_size:(b+1)*mb_size,:,:,1]
+    if len(X_mb)!=mb_size:
+    	continue
+    _, D_loss_curr = sess.run([D_solver, D_loss], feed_dict={X: X_mb, Z: sample_Z(mb_size, Z_dim)})
+    _, G_loss_curr = sess.run([G_solver, G_loss], feed_dict={Z: sample_Z(mb_size, Z_dim)})
+
+    if it % 1000 == 0:
+        print('Iter: {}'.format(it))
+        print('D loss: {:.4}'. format(D_loss_curr))
+        print('G_loss: {:.4}'.format(G_loss_curr))
+        print()
