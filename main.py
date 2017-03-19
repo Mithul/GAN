@@ -42,29 +42,35 @@ def generator(input):
 		output = tf.reshape(tf.nn.sigmoid(tf.matmul(layer1, Wg2) + bg2), [-1, 32, 32, 3])
 	return output
 
-W1 = tf.Variable(xavier_init([3072, 768]))
-b1=tf.Variable(xavier_init([768]))
-W3 = tf.Variable(xavier_init([768,1]))
-b3=tf.Variable(xavier_init([1]))
-W5 = tf.Variable(xavier_init([192, 64]))
-b5=tf.Variable(xavier_init([64]))
-W7 = tf.Variable(xavier_init([64, 1]))
-b7=tf.Variable(xavier_init([1]))
+W1 = tf.Variable(tf.random_normal([32, 32, 3, 16]))
+b1=tf.Variable(tf.random_normal([16]))
+W3 = tf.Variable(tf.random_normal([13, 13, 16, 32]))
+b3=tf.Variable(tf.random_normal([32]))
+W5 = tf.Variable(tf.random_normal([4, 4, 32, 64]))
+b5=tf.Variable(tf.random_normal([64]))
+W7 = tf.Variable(tf.random_normal([64, 1]))
+b7=tf.Variable(tf.random_normal([1]))
 
 theta_G = [W1, W3, W5, W7, b1, b3, b5, b7]
 def discriminator(input):
 	with tf.variable_scope("discriminator") as scope:
-		input = tf.reshape(input, [-1, 3072])
-		layer1 = tf.nn.tanh(tf.matmul(input, W1)+ b1)
+		input = tf.reshape(input, [-1, 32, 32, 3])
+		layer1 = tf.nn.conv2d(input, W1, strides=[1,1,1,1], padding='SAME')+ b1
+		layer2 = tf.nn.tanh(tf.nn.max_pool(layer1, [1,7,7,1], strides=[1,2,2,1], padding='VALID'))
+		
+		layer3 = tf.nn.conv2d(layer2, W3, strides=[1,1,1,1], padding='SAME')+ b3
+		layer4 = tf.nn.tanh(tf.nn.max_pool(layer3, [1,7,7,1], strides=[1,2,2,1], padding='VALID'))
 
-		layer3 = tf.matmul(layer1, W3)+ b3
+		layer5 = tf.nn.conv2d(layer4, W5, strides=[1,1,1,1], padding='SAME')+ b5
+		layer6 = tf.nn.relu(tf.nn.max_pool(layer5, [1,4,4,1], strides=[1,2,2,1], padding='VALID'))
+
 
 		# layer5 = tf.nn.relu(tf.matmul(layer3, W5)+ b5)
 
-		# layer7 = tf.nn.relu(tf.matmul(layer5, W7)+ b7)
+		layer7 = tf.nn.relu(tf.matmul(tf.reshape(layer6, [-1, 64]), W7)+ b7)
 
-		output = tf.nn.sigmoid(layer3)
-		logits = layer3
+		output = tf.nn.sigmoid(layer7)
+		logits = layer7
 	return output, logits
 
 input_d = tf.placeholder(tf.float32)
@@ -99,7 +105,7 @@ def train():
 			sess.run(d_solver, feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
 			if i%1000 == 0:
 				show(k*10000+i)
-				print sess.run([d_r, d_f, di_r, di_f, g_loss, d_loss], feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
+				print sess.run([d_r, d_f, di_r, di_f, G_loss, D_loss], feed_dict={Z: np.random.uniform(-1., 1., size=[batch_size, 100]), input_d: train_data[(i)*batch_size:(i+1)*batch_size]})
 				print str(k)+" : "+str(i)+"/"+str(len(train_data)/batch_size)
 
 def show(i):
